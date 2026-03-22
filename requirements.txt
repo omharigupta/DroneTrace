@@ -1,0 +1,12 @@
+# Transformer-Based UAV Forensic Anomaly Detection
+# Requirements — Python 3.10+
+
+tensorflow>=2.14.0
+# tensorflow-metal             # Uncomment on macOS M1/M2 for GPU acceleration
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+scipy>=1.11.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+tqdm>=4.65.0
