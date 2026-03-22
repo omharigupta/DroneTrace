@@ -1,6 +1,10 @@
-# Transformer-Based UAV Forensic Anomaly Detection
+# DroneTrace — UAV Forensic Anomaly Detection
 
-A deep-learning pipeline for **detecting telemetry tampering** in drone (UAV) flight logs. Built with a Transformer encoder, **LoRA** (Low-Rank Adaptation) for parameter-efficient training, automatic **checkpoint resume**, and a **forensic evidence checker** that combines model predictions with statistical reference validation.
+<p align="center">
+  <b>Detect telemetry tampering in drone flight logs using deep learning</b>
+</p>
+
+A Transformer-based forensic pipeline for **detecting tampered UAV telemetry**. Built with **LoRA** (Low-Rank Adaptation) for parameter-efficient training, automatic **checkpoint resume**, a **web dashboard** for evidence upload & analysis, and a **forensic evidence checker** that combines model predictions with statistical reference validation.
 
 ---
 
@@ -12,12 +16,13 @@ A deep-learning pipeline for **detecting telemetry tampering** in drone (UAV) fl
 4. [Installation](#installation)
 5. [Kaggle Datasets](#kaggle-datasets)
 6. [Quick Start](#quick-start)
-7. [Training](#training)
-8. [Checkpoint Resume](#checkpoint-resume)
-9. [Evidence Checking](#evidence-checking)
-10. [CLI Reference](#cli-reference)
-11. [Configuration](#configuration)
-12. [Architecture](#architecture)
+7. [Dashboard](#dashboard)
+8. [Training](#training)
+9. [Checkpoint Resume](#checkpoint-resume)
+10. [Evidence Checking](#evidence-checking)
+11. [CLI Reference](#cli-reference)
+12. [Configuration](#configuration)
+13. [Architecture](#architecture)
 
 ---
 
@@ -31,6 +36,7 @@ A deep-learning pipeline for **detecting telemetry tampering** in drone (UAV) fl
 | **Dual Dataset Support** | Kaggle tampering dataset (training) + supplemental operations log (reference validation) |
 | **Forensic Evidence Checker** | SHA-256 hashing ➜ Transformer classification ➜ reference profile deviation ➜ combined verdict |
 | **Synthetic Fallback** | Generates synthetic telemetry data if Kaggle datasets are not available |
+| **Web Dashboard** | Flask dashboard — drag & drop evidence files, get instant forensic verdicts |
 | **Baseline Comparison** | Random Forest baseline with hand-crafted statistical features |
 
 ---
@@ -38,11 +44,15 @@ A deep-learning pipeline for **detecting telemetry tampering** in drone (UAV) fl
 ## Project Structure
 
 ```
-dron/
+DroneTrace/
 ├── main.py                         # CLI entry point — orchestrates the full pipeline
+├── dashboard.py                    # Flask web dashboard for evidence analysis
 ├── config.py                       # All hyperparameters, paths, thresholds
 ├── requirements.txt                # Python dependencies
 ├── .gitignore
+│
+├── templates/
+│   └── index.html                  # Dashboard UI (dark theme, drag & drop upload)
 │
 ├── src/
 │   ├── models/
@@ -96,8 +106,8 @@ dron/
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Prawahanr/Dronelogs.git
-cd Dronelogs
+git clone https://github.com/omharigupta/DroneTrace.git
+cd DroneTrace
 
 # 2. Create a virtual environment (Python 3.11)
 python -m venv venv
@@ -123,8 +133,10 @@ The system uses two Kaggle datasets. **Both are optional** — if not present, s
 - **URL:** https://www.kaggle.com/datasets/rasikaekanayakadevlk/drone-telemetry-tampering-dataset-v2
 - **Size:** ~1.48 GB
 - **Place in:** `data/raw/tampering/`
-- The main file should be: `data/raw/tampering/tampering_research_dataset_pack.csv`
-- Severity sub-folders (`balanced/`, `strong/`, `subtle/`) are also supported.
+- After extraction, the dataset nests inside `drone_temparing_dataset_v2/` with severity sub-folders.
+- The system **auto-detects** CSVs recursively — no manual file renaming needed.
+- Columns: `case_id, row_idx, label, tamper_type, latitude, longitude, altitude, speed, heading, ...`
+- Severity sub-folders: `balanced/`, `strong/`, `subtle/` (each with `rep_00/`, `rep_01/`, etc.)
 
 ### Dataset 2 — Supplemental Operations Log (Reference)
 
@@ -159,7 +171,14 @@ This generates synthetic telemetry data, trains the Transformer, evaluates metri
 python main.py --kaggle
 ```
 
-### Check a single evidence file
+### Launch the web dashboard
+
+```bash
+python dashboard.py
+# Open http://127.0.0.1:5000 in your browser
+```
+
+### Check a single evidence file (CLI)
 
 ```bash
 python main.py --mode check --check path/to/evidence_file.csv
@@ -197,11 +216,10 @@ python main.py --mode train --kaggle --epochs 50
 2. **Preprocessing** — groups by case_id, applies sliding windows (100 timesteps, 50% overlap)
 3. **Dataset split** — 70% train / 15% validation / 15% test
 4. **Model build** — Transformer encoder with LoRA adaptation
-5. **Training** — with 5 callbacks:
+5. **Training** — with cosine warmup LR schedule and 4 callbacks:
    - `EarlyStopping` (patience=10, monitors val_loss)
    - `ModelCheckpoint` — saves best model to `models_saved/transformer_best.keras`
    - `ModelCheckpoint` — saves every epoch as `models_saved/checkpoint_epoch_XX.keras`
-   - `ReduceLROnPlateau` (patience=5, factor=0.5)
    - `CSVLogger` — logs to `logs/training_log.csv`
 
 ---
@@ -226,6 +244,46 @@ python main.py --kaggle --epochs 50 --no-resume
 2. It picks the latest checkpoint and extracts the epoch number.
 3. Training resumes from that epoch with `model.fit(initial_epoch=N)`.
 4. The CSVLogger appends to the existing log rather than overwriting.
+
+---
+
+## Dashboard
+
+DroneTrace includes a **web-based dashboard** for uploading and analyzing evidence files through your browser.
+
+### Start the dashboard
+
+```bash
+python dashboard.py
+```
+
+Then open **http://127.0.0.1:5000**.
+
+### Features
+
+- **Drag & drop** file upload (or click to browse)
+- **Real-time analysis** — SHA-256 hash → Transformer → Reference → Verdict
+- **Visual results** — confidence ring, per-window score breakdown, tampering ratio bar
+- **Report history** — view past forensic reports
+- **Format guide** — shows accepted formats and sample CSV template right in the UI
+
+### Accepted file formats
+
+| Format | Extension | Key columns |
+|---|---|---|
+| Tampering Dataset | `.csv` | `case_id`, `row_idx`, `label`, `latitude`, `longitude`, `altitude`, `speed` |
+| DJI DatCon Export | `.csv` | `GPS:Lat`, `GPS:Long`, `GPS:heightMSL`, `Motor:Speed:*` |
+| NIST Drone Forensics | `.txt` `.dat` | `lat`, `lon`, `altitude`, `groundspeed` |
+| Generic CSV | `.csv` | `latitude`, `longitude`, `altitude` (minimum required) |
+
+> **Minimum requirement:** At least `latitude`, `longitude`, and `altitude` columns with ~100+ rows.
+
+### Screenshot workflow
+
+1. Upload a `.csv` / `.txt` / `.dat` telemetry file
+2. Dashboard runs the 5-step forensic check automatically
+3. View the verdict: **CLEAN** / **TAMPERED** / **SUSPICIOUS** with confidence percentage
+4. Inspect per-window Transformer scores and reference validation details
 
 ---
 
@@ -347,3 +405,10 @@ Output: tamper probability [0, 1]
 ## License
 
 This project is for academic/research purposes.
+
+---
+
+<p align="center">
+  <b>DroneTrace</b> — Transformer + LoRA forensic anomaly detection for UAV telemetry<br>
+  <a href="https://github.com/omharigupta/DroneTrace">github.com/omharigupta/DroneTrace</a>
+</p>
