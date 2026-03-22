@@ -54,7 +54,13 @@ def load_tampering_dataset(
 
     # If severity specified, look for CSVs in that subfolder
     if severity and severity in config.TAMPER_SEVERITY_LEVELS:
+        # Search inside nested folders (Kaggle may extract into a subfolder)
         severity_dir = os.path.join(config.TAMPER_DATASET_DIR, severity)
+        if not os.path.isdir(severity_dir):
+            # Try searching inside subfolders (e.g., drone_temparing_dataset_v2/balanced/)
+            nested = glob.glob(os.path.join(config.TAMPER_DATASET_DIR, "**", severity), recursive=True)
+            if nested:
+                severity_dir = nested[0]
         if os.path.isdir(severity_dir):
             csv_files = glob.glob(os.path.join(severity_dir, "**", "*.csv"), recursive=True)
             if csv_files:
@@ -65,13 +71,23 @@ def load_tampering_dataset(
                 labels = df[config.TAMPER_LABEL_COL] if config.TAMPER_LABEL_COL in df.columns else None
                 return df, labels
 
-    # Load main pack CSV
+    # Load main pack CSV — if not at the expected path, search recursively
     if not os.path.exists(csv_path):
-        logger.error(f"Tampering dataset not found at: {csv_path}")
-        logger.info(f"  Download from: kaggle.com/datasets/rasikaekanayakadevlk/"
-                     f"drone-telemetry-tampering-dataset-v2")
-        logger.info(f"  Place files in: {config.TAMPER_DATASET_DIR}")
-        raise FileNotFoundError(f"Tampering dataset CSV not found: {csv_path}")
+        # Kaggle extraction may nest files in a subfolder
+        found_csvs = glob.glob(
+            os.path.join(config.TAMPER_DATASET_DIR, "**", "*.csv"), recursive=True
+        )
+        # Pick the largest CSV (the main dataset pack)
+        if found_csvs:
+            found_csvs.sort(key=lambda f: os.path.getsize(f), reverse=True)
+            csv_path = found_csvs[0]
+            logger.info(f"Auto-detected tampering CSV: {csv_path}")
+        else:
+            logger.error(f"Tampering dataset not found at: {csv_path}")
+            logger.info(f"  Download from: kaggle.com/datasets/rasikaekanayakadevlk/"
+                         f"drone-telemetry-tampering-dataset-v2")
+            logger.info(f"  Place files in: {config.TAMPER_DATASET_DIR}")
+            raise FileNotFoundError(f"Tampering dataset CSV not found: {csv_path}")
 
     logger.info(f"Loading tampering dataset: {csv_path}")
 
@@ -288,7 +304,7 @@ def load_reference_dataset(csv_path: str = None) -> pd.DataFrame:
         raise FileNotFoundError(f"Reference dataset CSV not found: {csv_path}")
 
     logger.info(f"Loading reference dataset: {csv_path}")
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, on_bad_lines="skip")
     logger.info(f"  Loaded {len(df)} flights, {df.shape[1]} columns")
     logger.info(f"  Columns: {list(df.columns)}")
 

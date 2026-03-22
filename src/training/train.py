@@ -249,14 +249,10 @@ def train_transformer(
             save_freq="epoch",
             verbose=0,
         ),
-        # Reduce LR on plateau (supplementary)
-        tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_loss",
-            factor=0.5,
-            patience=5,
-            min_lr=1e-7,
-            verbose=1,
-        ),
+        # NOTE: ReduceLROnPlateau removed — incompatible with CosineDecayWithWarmup
+        # schedule (LearningRateSchedule objects make LR non-settable).
+        # The cosine warmup schedule already handles LR decay.
+        #
         # CSV logger — saves per-epoch metrics to a file for later analysis
         # append=True so resumed training adds to existing log
         tf.keras.callbacks.CSVLogger(
